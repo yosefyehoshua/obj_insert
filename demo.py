@@ -6,9 +6,11 @@ from src.config import RunConfig
 import PIL
 from src.euler_scheduler import MyEulerAncestralDiscreteScheduler
 from diffusers import StableDiffusionXLInpaintPipeline
+from src.pipeline_stable_diffusion_xl_obj_insert_2 import StableDiffusionXLOBJInsertPipeline
 from src.sdxl_inversion_pipeline import SDXLDDIMPipeline
 from PIL import Image
 from diffusers.utils.torch_utils import randn_tensor
+IMAGE_SIZE = (1024, 1024)
 
 def clear_memory():
     gc.collect()
@@ -33,7 +35,7 @@ def center_crop(im):
     return im
 
 def load_im_into_format_from_path(im_path):
-    return center_crop(PIL.Image.open(im_path)).resize((512, 512))
+    return center_crop(PIL.Image.open(im_path)).resize(IMAGE_SIZE)
 
 class ImageEditorDemo:
     def __init__(self, pipe_inversion, pipe_inference, input_images, description_prompts, cfg):
@@ -43,7 +45,7 @@ class ImageEditorDemo:
         self.description_prompts = description_prompts
         self.load_image = True
         g_cpu = torch.Generator().manual_seed(7865)
-        img_size = (512,512)
+        img_size = IMAGE_SIZE
         VQAE_SCALE = 8
         batch_size = len(input_images)
         latents_size = (batch_size, 4, img_size[0] // VQAE_SCALE, img_size[1] // VQAE_SCALE)
@@ -90,6 +92,8 @@ class ImageEditorDemo:
                             negative_prompt=[""] * len(target_prompts),
                             callback_on_step_end=inference_callback,
                             image=self.last_latents,
+                            height=IMAGE_SIZE[0],
+                            width=IMAGE_SIZE[1],
                             strength=self.cfg.inversion_max_step,
                             denoising_start=1.0 - self.cfg.inversion_max_step,
                             mask_image=dummy_mask,
@@ -99,12 +103,12 @@ class ImageEditorDemo:
 
 if __name__ == '__main__':
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    image_size = (512, 512)
+    image_size = IMAGE_SIZE
     scheduler_class = MyEulerAncestralDiscreteScheduler
-    
+    sd_id = "stabilityai/sdxl-turbo"
     # Load models sequentially with half precision
     pipe_inversion = SDXLDDIMPipeline.from_pretrained(
-        "stabilityai/sdxl-turbo", 
+        sd_id, 
         use_safetensors=True,
         safety_checker=None, 
         cache_dir="/inputs/huggingface_cache",
@@ -112,8 +116,8 @@ if __name__ == '__main__':
     )
     clear_memory()
     
-    pipe_inference = StableDiffusionXLInpaintPipeline.from_pretrained(  
-        "stabilityai/sdxl-turbo", 
+    pipe_inference = StableDiffusionXLOBJInsertPipeline.from_pretrained(  
+        sd_id, 
         use_safetensors=True,
         safety_checker=None,
         cache_dir="/inputs/huggingface_cache",
@@ -125,8 +129,8 @@ if __name__ == '__main__':
     pipe_inversion.scheduler = scheduler_class.from_config(pipe_inversion.scheduler.config)
     pipe_inversion.scheduler_inference = scheduler_class.from_config(pipe_inference.scheduler.config)
 
-    config = RunConfig(num_inference_steps=100,
-                       num_inversion_steps=100,
+    config = RunConfig(num_inference_steps=50,
+                       num_inversion_steps=50,
                        guidance_scale=1.0,
                        inversion_max_step=1.0)
 
